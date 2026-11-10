@@ -30,10 +30,11 @@ function startBattle(area,e,baseRewards=[],{training=false}={}){
   if(pendingBattle||state.gameOver)return false;
   if(!training&&!activeExperience)beginExperience('explore',{area});
   if(typeof stopScenePlayback==='function')stopScenePlayback({resources:false});
-  const a=aggregate(),threshold=Math.max(5,Math.round(e.threshold*(1-a.threshold-routeThresholdBonus()))),power=totalPower();
+  const a=aggregate(),dayScale=training?1:state.day>=50?1.55:state.day>=25?1.25:state.day>10?1.1:1,enemyCount=!training&&state.day>=25?2:1,threshold=Math.max(5,Math.round(e.threshold*dayScale*(enemyCount===2?1.18:1)*(1-a.threshold-routeThresholdBonus()))),power=totalPower();
   const patterns=[['attack','charge','heavy'],['guard','attack','charge','heavy'],['attack','attack','charge','heavy']];
   const seed=[...e.name].reduce((sum,c)=>sum+c.charCodeAt(0),0),enemyMaxHp=Math.max(24,Math.round(threshold*1.1+18));
-  pendingBattle={version:1,id:uid(),area,e:JSON.parse(JSON.stringify(e)),baseRewards,training,
+  const stagedEnemy=JSON.parse(JSON.stringify(e));if(enemyCount===2)stagedEnemy.name=`双生·${stagedEnemy.name}`;
+  pendingBattle={version:1,id:uid(),area,e:stagedEnemy,baseRewards,training,enemyCount,dayScale,
     threshold,power,enemyMaxHp,enemyHp:enemyMaxHp,hp:training?100:state.hp,maxHp:training?100:state.maxHp+a.hp,
     initialHp:training?100:state.hp,damageReduce:Math.min(.9,a.damageReduce),stamina:3,focus:0,round:1,
     pattern:training?['charge','heavy','attack','guard']:patterns[seed%patterns.length],intentIndex:0,
@@ -106,7 +107,7 @@ function finishCombat(outcome){
   const overpower=outcome==='victory'&&b.power>=b.threshold*1.5,a=aggregate();
   if(outcome==='victory'){
     const rewards=[...b.baseRewards],beast=state.shelter.route==='beast'?1+state.shelter.level*.12:1;
-    applyGains(b.e.gain,1.5*(overpower?2+a.overpower:1)*beast*(1+a.dangerReward),rewards);
+    applyGains(b.e.gain,1.5*(b.enemyCount||1)*(overpower?2+a.overpower:1)*beast*(1+a.dangerReward),rewards);
     if(Math.random()<.16+a.loot)dropGear(true,rewards);
     b.summary=overpower?'压制获胜':'战斗胜利';story(b.summary,b.e.name,`你用${b.round-1}个回合击败敌人，战利品已带回。`,rewards);log(`击败${b.e.name}，${b.round-1}回合：${rewards.join('、')}`,'good');
   }else{
@@ -117,7 +118,7 @@ function finishCombat(outcome){
   feedback.usedDamageReduce=b.enemyStrikes?feedback.damageReduce:[];
   feedback.usedRewards=outcome==='victory'?[...feedback.dangerReward,...(state.shelter.route==='beast'?[{name:route().name,value:state.shelter.level*.12}]:[]),...(overpower?feedback.overpower:[])]:[];
   if(activeExperience)activeExperience.meta.battle={manual:true,battleId:b.id,name:b.e.name,power:b.power,threshold:b.threshold,mode:outcome==='victory'?(overpower?'overpower':'victory'):outcome,rounds:b.round-1,turns:b.turns,feedback,
-    explanation:`共${b.round-1}回合。开战战力${b.power}，敌方门槛${b.threshold}。${outcome==='victory'?(overpower?'达到1.5倍门槛，压制战利品加成生效。':'战利品已按实际结果结算。'):outcome==='retreat'?'主动撤退，保留保底物资。':'重伤败退，保留1点生命。'}${b.honeyUsed?'本战使用了蜂蜜诱饵。':''}`};
+    explanation:`共${b.round-1}回合。战力即基础攻击力：开战攻击力${b.power}，敌方门槛${b.threshold}。${b.enemyCount===2?'25天后的双怪物阶段已生效。':''}${state.day>=50?'50天后的强化系数已生效。':''}${outcome==='victory'?(overpower?'达到1.5倍门槛，压制战利品加成生效。':'战利品已按实际结果结算。'):outcome==='retreat'?'主动撤退，保留保底物资。':'重伤败退，保留1点生命。'}${b.honeyUsed?'本战使用了蜂蜜诱饵。':''}`};
 }
 function closeCombat(){
   const b=pendingBattle;if(!b?.resolved||b.phase==='animating')return false;
@@ -143,7 +144,7 @@ function renderCombat(){
   const gains=record?.changes.filter(x=>x.to>x.from&&(x.key.startsWith('mat:')||x.key.startsWith('graded:')||x.key.startsWith('core:')))||[];
   panel.innerHTML=`<div class="combat-heading"><b>${b.training?'无损演练':'野外遭遇'} · ${b.e.name}</b><span>${b.resolved?b.summary:`第${Math.max(1,b.round-(busy?1:0))}回合`}</span></div>
     <div class="combat-vitals"><div><span>你 <b>${displayNumber(b.hp)} / ${displayNumber(b.maxHp)}</b></span><i><em style="width:${b.hp/b.maxHp*100}%"></em></i></div><div class="enemy-vital"><span>敌人 <b>${b.enemyHp} / ${b.enemyMaxHp}</b></span><i><em style="width:${b.enemyHp/b.enemyMaxHp*100}%"></em></i></div><div class="combat-stamina"><span>体力</span><div aria-label="${b.stamina}/3体力">${[0,1,2].map(i=>`<i class="${i<b.stamina?'filled':''}"></i>`).join('')}</div></div></div>
-    ${b.training?'<p class="practice-note">演练不消耗真实生命、物资或探索行动，也不发放战利品。</p>':''}
+    ${b.training?'<p class="practice-note">演练不消耗真实生命、物资或探索行动，也不发放战利品。</p>':`<p class="practice-note">攻击力 ${b.power} 决定每次攻击的基础伤害；敌方门槛 ${b.threshold} 决定压制难度。${b.enemyCount===2?'当前为双怪物战。':''}</p>`}
     ${b.resolved?`<div class="combat-result ${b.outcome==='victory'?'win':''}"><span>${b.outcome==='victory'?'✦':'↶'}</span><div><b>${escapeText(b.summary)}</b><small>${b.training?'可以随时再来练习':b.outcome==='victory'?'已保存战利品，收起后可查看完整明细':'没有战斗奖励，探索保底物资仍在背包'}</small></div><div class="combat-loot">${gains.slice(0,4).map(x=>`<span>${x.icon} +${displayNumber(x.to-x.from)}</span>`).join('')}</div></div><button class="combat-continue" data-combat="continue" ${busy?'disabled':''}>${busy?'动作结算中…':'收起战斗 · 返回营地'}</button>`:
     `<div class="enemy-intent" data-intent="${intent.type}"><span>${intent.icon}</span><div><small>${busy?'动作演出中':'敌人下一招'}</small><b>${intent.name}${intent.multiplier?` · 预计${combatIncomingDamage(b)}伤害`:''}</b><p>${intent.description}</p></div><em>${busy?'请稍候':'轮到你'}</em></div><div class="combat-actions">${combatOptions(b).map(x=>`<button data-combat="${x.id}" ${busy||x.reason?'disabled':''}><span class="combat-key">${x.key}</span><strong><span>${x.icon}</span> ${x.name}</strong><small>${escapeText(x.reason||x.text)}</small></button>`).join('')}</div><p class="combat-supplies">⬡ 蜂蜜 ${bag.honey||0} · 💧 水 ${bag.water||0} · 🍖 食物 ${bag.food||0}<span>等待安全 · 回合不扣行动 · 数字键1–6</span></p>`}
     <p class="combat-turn-note" role="status">${last?escapeText(last.text):'先观察敌人的意图，再选择行动。轻击和防御恢复体力，重击可以破防或打断。'}</p>

@@ -141,9 +141,10 @@ function renderJourneyObjectives() {
 
 function renderExperience() {
   const disaster=nextDisaster(),r=route(),step=getNextStep();
-  $('#supplyMeters').innerHTML=['water','food','wood','stone'].map(k=>`<div class="supply" data-supply="${k}"><span>${MATS[k][0]}</span><div><small>${MATS[k][1]} · L1</small><b>${state.inventory[k]||0}</b></div></div>`).join('')+`<button class="supply shelter-supply" data-go="repair"><span>⌂</span><div><small>庇护所耐久</small><b>${displayNumber(state.shelter.hp)}<em> / ${shelterMaxValue()}</em></b></div></button>`;
-  $('#dayBrief').className=`day-brief${disaster&&state.shelter.hp<=disaster.damage?' danger':''}`;
-  $('#dayBrief').textContent=state.gameOver?'本轮旅程已结束':disaster?`${disaster.left}天后 · ${disaster.event.name}｜预计损伤${disaster.damage}耐久`:'最终灾难已度过，结束今日即可通关';
+  const recentDamage=state.lastShelterDamage?.day===state.day?state.lastShelterDamage:null;
+  $('#supplyMeters').innerHTML=['water','food','wood','stone'].map(k=>`<div class="supply" data-supply="${k}"><span>${MATS[k][0]}</span><div><small>${MATS[k][1]} · L1</small><b title="准确数量：${state.inventory[k]||0}">${compactNumber(state.inventory[k]||0)}</b></div></div>`).join('')+`<button class="supply shelter-supply${recentDamage?' damaged':''}" data-go="repair"><span>⌂</span><div><small>${recentDamage?`刚受损 −${recentDamage.amount}`:'庇护所耐久'}</small><b>${displayNumber(state.shelter.hp)}<em> / ${shelterMaxValue()}</em></b></div></button>`;
+  $('#dayBrief').className=`day-brief${recentDamage||disaster&&state.shelter.hp<=disaster.damage?' danger':''}`;
+  $('#dayBrief').textContent=state.gameOver?'本轮旅程已结束':recentDamage?`刚刚遭遇${recentDamage.name}：庇护所耐久 −${recentDamage.amount}，点击耐久条可维修`:disaster?`${disaster.left}天后 · ${disaster.event.name}｜预计损伤${disaster.damage}耐久`:'最终灾难已度过，结束今日即可通关';
   $('#nextStep').className=`next-step${step.urgent?' urgent':''}`;
   $('#nextStep').innerHTML=`<summary><span class="step-mark">${step.urgent?'!':'↟'}</span><span><small>${step.urgent?'营地预警':'接下来可以做'}</small><b>${escapeText(step.title)}</b></span><span class="fold-chevron" aria-hidden="true"></span></summary><div class="step-body"><p>${escapeText(step.text)}</p><button data-go="${step.go}">${step.button}<span aria-hidden="true"> →</span></button></div>`;
   if(step.urgent)$('#nextStep').open=true;

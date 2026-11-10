@@ -62,6 +62,25 @@ test('ten forest actions across two days discover a usable core and blueprint',(
   assert.equal(result.newBlueprints.length,1);assert.match(g.read('getNextStep().title'),/核心/);
 });
 
+test('level six shelter awakening consumes the matching core and unlocks rare dungeon growth',()=>{
+  const g=game();g.run("state.shelter={route:'water',level:5,hp:160,maxHp:160};state.cores.springCore=1;state.inventory.wood=999;state.inventory.stone=999;state.inventory.water=999;upgradeShelter('water')");
+  assert.equal(g.read('state.shelter.level'),6);assert.equal(g.read('state.cores.springCore'),0);
+  assert.match(g.read("routeEffect(ROUTES.find(x=>x.id==='water'),6)"),/觉醒副本稀有率\+10%/);
+});
+
+test('day twenty five encounters use two monsters and day fifty is stronger again',()=>{
+  const g=game();g.run("state.day=25;startBattle('forest',WORLD_EVENTS.forest.danger[0],[])");
+  assert.equal(g.read('pendingBattle.enemyCount'),2);const day25=g.read('pendingBattle.threshold');
+  const h=game();h.run("state.day=50;startBattle('forest',WORLD_EVENTS.forest.danger[0],[])");
+  assert.equal(h.read('pendingBattle.enemyCount'),2);assert.ok(h.read('pendingBattle.threshold')>day25);
+});
+
+test('bound crafting preserves one higher grade and equipment can be dismantled',()=>{
+  const g=game();g.run("state.graded['wood:2']=4;state.craftLocks['wood:2']=true;batchCraft('wood',2,3);state.gear.push({uid:'spare',base:'staff',level:1});breakGear('spare')");
+  assert.equal(g.read("state.graded['wood:2']"),1);assert.equal(g.read("state.graded['wood:3']"),1);
+  assert.equal(g.read("state.gear.some(x=>x.uid==='spare')"),false);assert.equal(g.read('state.inventory.iron'),5);assert.equal(g.read('state.inventory.essence'),2);
+});
+
 test('a built collector creates exactly the water credited to it at dawn',()=>{
   const g=game();g.run("installModule('dew');nextDay()");
   assert.equal(g.read('state.inventory.water'),9);assert.equal(g.read('state.inventory.food'),5);
